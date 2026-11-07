@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WEATHERmeter test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#dfe7eb; --panel:#f4f7f8; --ink:#1c2b33; --muted:#566872; --line:#b9c7ce;
+  --blaze:#d9561a; --ok:#2f7d4f; --bad:#b3261e;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#15202a; --panel:#1d2b36; --ink:#e3ecf0; --muted:#93a6b0; --line:#34495a;
+    --blaze:#f07a3a; --ok:#5fbf84; --bad:#ff7b72; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15202a; --panel:#1d2b36; --ink:#e3ecf0; --muted:#93a6b0; --line:#34495a;
+  --blaze:#f07a3a; --ok:#5fbf84; --bad:#ff7b72; color-scheme:dark;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Barlow,"Helvetica Neue",Arial,sans-serif}
+main{max-width:560px;margin:0 auto;padding:18px 16px 40px}
+h1{font:700 30px/1.05 "Barlow Condensed","Arial Narrow",sans-serif;margin:4px 0 2px}
+.sub{color:var(--muted);margin:0 0 16px}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+button{font:600 16px Barlow,Arial,sans-serif;border:2px solid var(--ink);background:transparent;color:var(--ink);
+  border-radius:10px;padding:10px 16px;min-height:46px;cursor:pointer}
+button.primary{background:var(--blaze);border-color:var(--blaze);color:#fff}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible{outline:3px solid var(--blaze);outline-offset:2px}
+.status{display:flex;align-items:center;gap:8px;color:var(--muted);margin:4px 0 16px}
+.dot{width:11px;height:11px;border-radius:50%;background:var(--line);flex:none}
+.dot.on{background:var(--ok)} .dot.stale{background:var(--blaze)} .dot.err{background:var(--bad)}
+.wind{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:12px}
+.big{font:700 76px/0.9 "Barlow Condensed","Arial Narrow",sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-1px}
+.big small{font-size:28px;font-weight:500;letter-spacing:0;margin-left:6px;color:var(--muted)}
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;color:var(--muted)}
+.trio b{display:block;color:var(--ink);font:700 24px "Barlow Condensed",sans-serif;font-variant-numeric:tabular-nums}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.cell{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.cell span{color:var(--muted);font-size:14px}
+.cell b{display:block;font:700 30px/1.1 "Barlow Condensed",sans-serif;font-variant-numeric:tabular-nums}
+.cell i{font-style:normal;color:var(--muted);font-size:14px}
+.cell.da{grid-column:1/-1;border-color:var(--blaze)}
+details{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+summary{font-weight:600;cursor:pointer;min-height:30px}
+.raw{overflow-x:auto;font:14px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre;margin:8px 0}
+.note{color:var(--muted);font-size:14px;margin:6px 0}
+.err{color:var(--bad);font-weight:600}
+</style>
+</head>
+<body>
+<main>
+  <h1>WEATHERmeter test</h1>
+  <p class="sub">Checks the decoder for the WeatherFlow meter (WFPSM) before it goes into Barricade Ballistics.</p>
+
+  <div class="bar">
+    <button class="primary" id="connect">Connect meter</button>
+    <button id="disconnect" disabled>Disconnect</button>
+  </div>
+  <div class="status"><span class="dot" id="dot"></span><span id="status">Not connected. Close the Wind &amp; Weather Meter app first.</span></div>
+  <p class="err" id="err" hidden></p>
+
+  <section class="wind" aria-label="Wind">
+    <div class="big" id="windMph">–<small>mph</small></div>
+    <div class="note" id="windMps">– m/s</div>
+    <div class="trio">
+      <div>Average <b id="avg">–</b></div>
+      <div>Gust <b id="gust">–</b></div>
+      <div>Lull <b id="lull">–</b></div>
+    </div>
+    <p class="note">Last 10 seconds, mph.</p>
+  </section>
+
+  <div class="grid">
+    <div class="cell"><span>Temperature</span><b id="temp">–</b><i id="tempC">–</i></div>
+    <div class="cell"><span>Humidity</span><b id="rh">–</b><i>relative</i></div>
+    <div class="cell"><span>Station pressure</span><b id="press">–</b><i id="pressHpa">–</i></div>
+    <div class="cell"><span>Air density</span><b id="rho">–</b><i>lb/ft³, humidity included</i></div>
+    <div class="cell da"><span>Density altitude</span><b id="da">–</b><i id="daNote">feet</i></div>
+  </div>
+
+  <details>
+    <summary>Compass (optional)</summary>
+    <p class="note">Tap Start, hold the meter upright and turn a slow full circle, then tap Stop. Point the meter at a known north and tap Set as north.</p>
+    <div class="bar">
+      <button id="calib">Start calibration</button>
+      <button id="north" disabled>Set as north</button>
+    </div>
+    <div class="cell"><span>Heading</span><b id="heading">–</b><i id="magRaw">x – · y – · z –</i></div>
+  </details>
+
+  <details open>
+    <summary>Raw packets</summary>
+    <div class="note" id="rate">0 packets</div>
+    <div class="raw" id="raw">Waiting for data…</div>
+    <div class="bar">
+      <button id="copy">Copy last 30 packets</button>
+    </div>
+    <p class="note" id="copied" hidden>Copied. Paste it to Claude to check the decoding.</p>
+  </details>
+</main>
+
+<script>
+const SERVICE = '961f0001-d2d6-43e3-a417-3bb8217e0e01';
+const DATA_CHAR = '961f0005-d2d6-43e3-a417-3bb8217e0e01';
+const $ = id => document.getElementById(id);
+
+let device = null, count = 0, firstAt = 0, lastAt = 0;
+const log = [], wind = [];
+const cal = {on:false, minX:Infinity, maxX:-Infinity, minY:Infinity, maxY:-Infinity, offset:0, last:null};
+
+function parsePacket(dv){
+  const i16 = o => dv.getInt16(o, true), u16 = o => dv.getUint16(o, true);
+  return {
+    windMps: u16(0) / 1000,
+    mag: {x:i16(2), y:i16(4), z:i16(6)},
+    tempC: i16(8) / 10,
+    humidity: u16(10),
+    pressureHpa: u16(12) / 10,
+    unknown: u16(14)
+  };
+}
+
+function density(tempC, rh, hpa){
+  const T = tempC + 273.15;
+  const es = 6.1078 * Math.pow(10, (7.5 * tempC) / (tempC + 237.3));
+  const pv = (rh / 100) * es, pd = hpa - pv;
+  const rho = (pd * 100) / (287.05 * T) + (pv * 100) / (461.495 * T);
+  return {lb: rho * 0.0624280, ft: 145442.16 * (1 - Math.pow(rho / 1.225, 0.234969))};
+}
+
+function hex(dv){
+  let s = '';
+  for (let i = 0; i < dv.byteLength; i++){
+    s += dv.getUint8(i).toString(16).padStart(2, '0').toUpperCase();
+    if (i % 2 === 1) s += ' ';
+  }
+  return s.trim();
+}
+
+function setStatus(text, state){
+  $('status').textContent = text;
+  $('dot').className = 'dot' + (state ? ' ' + state : '');
+}
+
+function showErr(msg){ $('err').textContent = msg; $('err').hidden = !msg; }
+
+function onPacket(e){
+  const dv = e.target.value;
+  const now = Date.now();
+  if (!firstAt) firstAt = now;
+  lastAt = now; count++;
+  if (dv.byteLength < 14){ log.push(new Date(now).toISOString() + '  ' + hex(dv) + '  (short packet)'); return; }
+  const r = parsePacket(dv);
+  const mph = r.windMps * 2.23694;
+
+  wind.push({t: now, v: mph});
+  while (wind.length && wind[0].t < now - 10000) wind.shift();
+  const vs = wind.map(w => w.v);
+  $('windMph').innerHTML = mph.toFixed(1) + '<small>mph</small>';
+  $('windMps').textContent = r.windMps.toFixed(2) + ' m/s';
+  $('avg').textContent = (vs.reduce((a,b) => a + b, 0) / vs.length).toFixed(1);
+  $('gust').textContent = Math.max(...vs).toFixed(1);
+  $('lull').textContent = Math.min(...vs).toFixed(1);
+
+  $('temp').textContent = (r.tempC * 9 / 5 + 32).toFixed(1) + ' °F';
+  $('tempC').textContent = r.tempC.toFixed(1) + ' °C';
+  $('rh').textContent = r.humidity + ' %';
+  $('press').textContent = (r.pressureHpa * 0.0295300).toFixed(2) + ' inHg';
+  $('pressHpa').textContent = r.pressureHpa.toFixed(1) + ' hPa';
+  const d = density(r.tempC, r.humidity, r.pressureHpa);
+  $('rho').textContent = d.lb.toFixed(5);
+  $('da').textContent = Math.round(d.ft).toLocaleString() + ' ft';
+
+  cal.last = r.mag;
+  if (cal.on){
+    cal.minX = Math.min(cal.minX, r.mag.x); cal.maxX = Math.max(cal.maxX, r.mag.x);
+    cal.minY = Math.min(cal.minY, r.mag.y); cal.maxY = Math.max(cal.maxY, r.mag.y);
+  }
+  $('magRaw').textContent = `x ${r.mag.x} · y ${r.mag.y} · z ${r.mag.z}`;
+  const h = heading(r.mag);
+  $('heading').textContent = h === null ? '–' : Math.round(h) + '°';
+
+  const line = new Date(now).toLocaleTimeString() + '  ' + hex(dv);
+  log.push(line);
+  if (log.length > 30) log.shift();
+  $('raw').textContent = log.slice(-6).reverse().join('\n');
+  const secs = (lastAt - firstAt) / 1000;
+  $('rate').textContent = `${count} packets` + (secs > 1 ? ` · ${(count / secs).toFixed(1)} per second` : '');
+  if (r.unknown !== 0) $('rate').textContent += ` · last two bytes = ${r.unknown}`;
+  setStatus('Live: ' + (device && device.name ? device.name : 'meter'), 'on');
+}
+
+function heading(m){
+  if (!isFinite(cal.minX) || cal.maxX - cal.minX < 20 || cal.maxY - cal.minY < 20) return null;
+  const x = m.x - (cal.minX + cal.maxX) / 2, y = m.y - (cal.minY + cal.maxY) / 2;
+  return ((Math.atan2(y, x) * 180 / Math.PI) + cal.offset + 720) % 360;
+}
+
+function withTimeout(p, ms, step){
+  return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('Timed out at step: ' + step)), ms))]);
+}
+
+async function connect(){
+  showErr('');
+  if (!navigator.bluetooth){
+    showErr('This browser can’t use Bluetooth. On iPhone, open this page in the Bluefy app.');
+    setStatus('No Bluetooth in this browser', 'err');
+    return;
+  }
+  try{
+    setStatus('Choose the WFPSM meter in the list…');
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{namePrefix: 'WFPSM'}],
+      optionalServices: [SERVICE]
+    });
+    device.addEventListener('gattserverdisconnected', () => {
+      setStatus('Disconnected', 'err');
+      $('connect').disabled = false; $('disconnect').disabled = true;
+    });
+    setStatus('Step 1 of 4: connecting to ' + (device.name || 'meter') + '…', 'stale');
+    const server = await withTimeout(device.gatt.connect(), 12000, '1 of 4, connecting');
+    setStatus('Step 2 of 4: finding the weather service…', 'stale');
+    const service = await withTimeout(server.getPrimaryService(SERVICE), 8000, '2 of 4, finding the weather service');
+    setStatus('Step 3 of 4: finding the data channel…', 'stale');
+    const ch = await withTimeout(service.getCharacteristic(DATA_CHAR), 8000, '3 of 4, finding the data channel');
+    ch.addEventListener('characteristicvaluechanged', onPacket);
+    setStatus('Step 4 of 4: starting the data stream…', 'stale');
+    await withTimeout(ch.startNotifications(), 8000, '4 of 4, starting the data stream');
+    setStatus('Connected. Waiting for the first reading…', 'stale');
+    $('connect').disabled = true; $('disconnect').disabled = false;
+  } catch (err){
+    const m = String(err && err.message || err);
+    if (/cancel/i.test(m)) setStatus('No meter chosen');
+    else { showErr('Couldn’t connect: ' + m + '. Make sure no other app is connected to the meter, then try again.'); setStatus('Not connected', 'err'); }
+  }
+}
+
+$('connect').onclick = connect;
+$('disconnect').onclick = () => { if (device && device.gatt.connected) device.gatt.disconnect(); };
+
+$('calib').onclick = () => {
+  cal.on = !cal.on;
+  if (cal.on){ cal.minX = cal.minY = Infinity; cal.maxX = cal.maxY = -Infinity; cal.offset = 0; }
+  $('calib').textContent = cal.on ? 'Stop calibration' : 'Start calibration';
+  $('north').disabled = cal.on;
+};
+$('north').onclick = () => {
+  if (!cal.last) return;
+  cal.offset = 0;
+  const h = heading(cal.last);
+  if (h !== null) cal.offset = -h;
+};
+
+$('copy').onclick = async () => {
+  const text = log.join('\n') || 'No packets yet';
+  try { await navigator.clipboard.writeText(text); }
+  catch (e){
+    const r = document.createRange(); r.selectNodeContents($('raw'));
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  }
+  $('copied').hidden = false;
+  setTimeout(() => $('copied').hidden = true, 4000);
+};
+
+setInterval(() => {
+  if (lastAt && device && device.gatt.connected && Date.now() - lastAt > 5000) setStatus('Connected, but no reading for 5 seconds', 'stale');
+}, 1000);
+</script>
+</body>
+</html>
