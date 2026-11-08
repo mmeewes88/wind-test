@@ -52,6 +52,9 @@ button:focus-visible{outline:3px solid var(--blaze);outline-offset:2px}
 .cell b{display:block;font:700 30px/1.1 "Barlow Condensed",sans-serif;font-variant-numeric:tabular-nums}
 .cell i{font-style:normal;color:var(--muted);font-size:14px}
 .cell.da{grid-column:1/-1;border-color:var(--blaze)}
+.dir{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;margin-top:12px}
+.dir b{font:700 40px/1 "Barlow Condensed","Arial Narrow",sans-serif;font-variant-numeric:tabular-nums}
+.dir span{color:var(--muted);font-size:14px}
 details{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
 summary{font-weight:600;cursor:pointer;min-height:30px}
 .raw{overflow-x:auto;font:14px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre;margin:8px 0}
@@ -74,6 +77,7 @@ summary{font-weight:600;cursor:pointer;min-height:30px}
   <section class="wind" aria-label="Wind">
     <div class="big" id="windMph">–<small>mph</small></div>
     <div class="note" id="windMps">– m/s</div>
+    <div class="dir"><b id="dir">–</b><span id="dirNote">Set up the compass below to show direction</span></div>
     <div class="trio">
       <div>Average <b id="avg">–</b></div>
       <div>Gust <b id="gust">–</b></div>
@@ -90,9 +94,9 @@ summary{font-weight:600;cursor:pointer;min-height:30px}
     <div class="cell da"><span>Density altitude</span><b id="da">–</b><i id="daNote">feet</i></div>
   </div>
 
-  <details>
-    <summary>Compass (optional)</summary>
-    <p class="note">Tap Start, hold the meter upright and turn a slow full circle, then tap Stop. Point the meter at a known north and tap Set as north.</p>
+  <details id="compassBox">
+    <summary>Compass setup</summary>
+    <p class="note">Do this once; it’s saved on this phone. Tap Start, hold the meter upright the way you’ll use it and turn a slow full circle, then tap Stop. Then point the meter north (check with the iPhone Compass app) and tap Set as north.</p>
     <div class="bar">
       <button id="calib">Start calibration</button>
       <button id="north" disabled>Set as north</button>
@@ -119,6 +123,33 @@ const $ = id => document.getElementById(id);
 let device = null, count = 0, firstAt = 0, lastAt = 0;
 const log = [], wind = [];
 const cal = {on:false, minX:Infinity, maxX:-Infinity, minY:Infinity, maxY:-Infinity, offset:0, last:null};
+try {
+  const s = JSON.parse(localStorage.getItem('wfpsmCompass') || 'null');
+  if (s && [s.minX, s.maxX, s.minY, s.maxY, s.offset].every(Number.isFinite)) Object.assign(cal, s);
+} catch (e) {}
+function saveCal(){
+  if (![cal.minX, cal.maxX, cal.minY, cal.maxY].every(Number.isFinite)) return;
+  try { localStorage.setItem('wfpsmCompass', JSON.stringify({minX:cal.minX, maxX:cal.maxX, minY:cal.minY, maxY:cal.maxY, offset:cal.offset})); } catch (e) {}
+}
+const headHist = [];
+function cardinal(d){
+  return ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(d / 22.5) % 16];
+}
+function showDirection(h, now, mps){
+  if (h === null || cal.on){
+    headHist.length = 0;
+    $('dir').textContent = '–';
+    $('dirNote').textContent = cal.on ? 'Calibrating… keep turning' : 'Set up the compass below to show direction';
+    return;
+  }
+  headHist.push({t: now, h});
+  while (headHist.length && headHist[0].t < now - 3000) headHist.shift();
+  let sx = 0, sy = 0;
+  headHist.forEach(p => { sx += Math.cos(p.h * Math.PI / 180); sy += Math.sin(p.h * Math.PI / 180); });
+  const avg = (Math.atan2(sy, sx) * 180 / Math.PI + 360) % 360;
+  $('dir').textContent = Math.round(avg) + '° ' + cardinal(avg);
+  $('dirNote').textContent = mps < 0.5 ? 'Wind too light for a reliable direction' : 'Wind from, with the meter pointed into the wind';
+}
 
 function parsePacket(dv){
   const i16 = o => dv.getInt16(o, true), u16 = o => dv.getUint16(o, true);
@@ -191,6 +222,7 @@ function onPacket(e){
   $('magRaw').textContent = `x ${r.mag.x} · y ${r.mag.y} · z ${r.mag.z}`;
   const h = heading(r.mag);
   $('heading').textContent = h === null ? '–' : Math.round(h) + '°';
+  showDirection(h, now, r.windMps);
 
   const line = new Date(now).toLocaleTimeString() + '  ' + hex(dv);
   log.push(line);
@@ -253,15 +285,17 @@ $('disconnect').onclick = () => { if (device && device.gatt.connected) device.ga
 $('calib').onclick = () => {
   cal.on = !cal.on;
   if (cal.on){ cal.minX = cal.minY = Infinity; cal.maxX = cal.maxY = -Infinity; cal.offset = 0; }
+  else saveCal();
   $('calib').textContent = cal.on ? 'Stop calibration' : 'Start calibration';
-  $('north').disabled = cal.on;
+  $('north').disabled = cal.on || !Number.isFinite(cal.minX);
 };
 $('north').onclick = () => {
   if (!cal.last) return;
   cal.offset = 0;
   const h = heading(cal.last);
-  if (h !== null) cal.offset = -h;
+  if (h !== null){ cal.offset = -h; saveCal(); headHist.length = 0; }
 };
+if (Number.isFinite(cal.minX)) $('north').disabled = false; else $('compassBox').open = true;
 
 $('copy').onclick = async () => {
   const text = log.join('\n') || 'No packets yet';
